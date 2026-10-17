@@ -7,6 +7,7 @@ modules are real files written to a temporary directory and loaded by the
 production loader.
 """
 
+import os
 import sys
 import tempfile
 import types
@@ -62,6 +63,7 @@ def make_app(tmp):
     app = object.__new__(application.POPWEB)
     app.web_window_dict = {}
     app.module_dict = {}
+    app.window_sizes = application.WindowSizes(os.path.join(tmp, "sizes.json"))
     app.screen_size = fake_qt._Size(1920, 1080)
     app.proxy = ("", "", "")
     app.is_proxy = False
@@ -87,7 +89,11 @@ class ApplicationTest(unittest.TestCase):
             first = self.app.get_web_window("dict_bing")
             second = self.app.get_web_window("dict_bing")
         self.assertIs(first, second)
-        factory.assert_called_once_with(self.app.screen_size)
+        factory.assert_called_once_with(
+            screen_size=self.app.screen_size,
+            module_name="dict_bing",
+            sizes=self.app.window_sizes,
+        )
 
     def test_get_module_loads_and_caches(self):
         """A module is executed once per path."""
@@ -210,12 +216,19 @@ class ApplicationTest(unittest.TestCase):
 
         first, second = Recorder(), Recorder()
         self.app.web_window_dict.update({"dict_bing": first, "url-preview": second})
+        self.app.window_sizes.sizes = {"dict_bing": (500, 400), "url-preview": (600, 300)}
         self.app.forget_window_sizes()
         self.assertEqual((first.calls, second.calls), (1, 1))
+        self.assertEqual(self.app.window_sizes.sizes, {})
+
+        self.app.window_sizes.sizes = {"dict_bing": (500, 400), "url-preview": (600, 300)}
         self.app.forget_window_sizes("dict_bing")
         self.assertEqual((first.calls, second.calls), (2, 1))
+        self.assertEqual(self.app.window_sizes.sizes, {"url-preview": (600, 300)})
+
         self.app.forget_window_sizes("missing")
         self.assertEqual((first.calls, second.calls), (2, 1))
+        self.assertEqual(self.app.window_sizes.sizes, {"url-preview": (600, 300)})
 
     def test_cleanup_closes_the_client(self):
         """The cleanup method only closes the EPC client."""

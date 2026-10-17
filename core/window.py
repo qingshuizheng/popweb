@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
 from .bridge import eval_in_emacs, get_emacs_func_result, get_emacs_var
 from .cookies import CookiesManager
+from .sizes import WindowSizes
 
 PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 """Directory of popweb.py, which is also where darkreader.js lives."""
@@ -191,13 +192,23 @@ class BrowserPage(QWebEnginePage):
 class WebWindow(QWidget):
     """The frameless popup window and the web page shown in it."""
 
-    def __init__(self, screen_size: Any = None) -> None:
+    def __init__(
+        self,
+        screen_size: Any = None,
+        module_name: Optional[str] = None,
+        sizes: Optional[WindowSizes] = None,
+    ) -> None:
         """Create the window for a screen of SCREEN_SIZE.
 
         SCREEN_SIZE is the primary screen's size; it is read from the running
         application when it is nil.  A screen wider than 3000 pixels gets twice
         the configured zoom factor, which is what keeps a popup readable on a
         4K display without a second option.
+
+        MODULE_NAME identifies the extension this window belongs to, and SIZES
+        is the store of dragged sizes: the saved size of MODULE_NAME, when
+        there is one, becomes the initial `user_size' so a popup keeps the
+        size from the previous session.
         """
         super().__init__()
 
@@ -258,8 +269,14 @@ class WebWindow(QWidget):
         self.setLayout(self.vbox)
 
         # A size the user dragged wins over the size an extension computes;
-        # `forget_user_size' gives control back to the extension.
-        self.user_size: Optional[Tuple[int, int]] = None
+        # `forget_user_size' gives control back to the extension.  A size
+        # saved by a previous session is the same kind of choice, so it is
+        # loaded here.
+        self.module_name = module_name
+        self.sizes = sizes
+        self.user_size: Optional[Tuple[int, int]] = (
+            sizes.get(module_name) if sizes is not None else None
+        )
         self._resize_edges: Optional[Tuple[bool, bool, bool, bool]] = None
         self._resize_start: Any = None
         self._resize_start_geometry: Any = None
@@ -320,7 +337,12 @@ class WebWindow(QWidget):
         super().resize(width, height)
 
     def forget_user_size(self) -> None:
-        """Forget the size set by dragging, so extensions size the popup again."""
+        """Forget the size set by dragging, so extensions size the popup again.
+
+        This only clears the window; `POPWEB.forget_window_sizes' also removes
+        the saved size from the store, including for modules whose window has
+        not been created yet.
+        """
         self.user_size = None
 
     def eventFilter(self, watched: Any, event: Any) -> bool:
@@ -371,6 +393,8 @@ class WebWindow(QWidget):
         elif event_type == QtCore.QEvent.Type.MouseButtonRelease:
             if self._resize_edges is not None:
                 self.user_size = (self.width(), self.height())
+                if self.sizes is not None:
+                    self.sizes.set(self.module_name, *self.user_size)
                 self._resize_edges = None
                 self._resize_start = None
                 self._resize_start_geometry = None

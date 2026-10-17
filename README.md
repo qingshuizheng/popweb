@@ -197,8 +197,11 @@ popweb-forget-window-sizes` gives the choice back to the extensions.
 
 A popup that measures its content, such as the LaTeX preview, still grows when
 the content needs more room; it only keeps a larger size that you dragged.
-Sizes are not written to disk, so a restart starts from the extension
-defaults.
+
+Dragged sizes are written to `sizes.json` in `popweb-config-location`
+(`var/popweb/sizes.json` in the author's Nix configuration), so they survive
+an Emacs restart.  Deleting that file does the same as `M-x
+popweb-forget-window-sizes`.
 
 ### URL preview size
 

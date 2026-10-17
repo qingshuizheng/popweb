@@ -75,7 +75,25 @@ class FakeWebView:
         self.loaded = url
 
 
-def make_window():
+class FakeSizes:
+    """The part of the size store that a window uses."""
+
+    def __init__(self, saved=None):
+        """Create a store with SAVED as its initial content."""
+        self.saved = dict(saved or {})
+        self.written = []
+
+    def get(self, module_name):
+        """Return the saved size of MODULE_NAME."""
+        return self.saved.get(module_name)
+
+    def set(self, module_name, width, height):
+        """Remember a dragged size."""
+        self.saved[module_name] = (int(width), int(height))
+        self.written.append((module_name, int(width), int(height)))
+
+
+def make_window(sizes=None, module_name=None):
     """Return a window whose shell was built by `__init__` against fake Qt."""
     with mock.patch.object(window_module, "get_emacs_var", return_value=1), mock.patch.object(
         window_module,
@@ -84,7 +102,9 @@ def make_window():
     ), mock.patch.object(
         window_module.CookiesManager, "get_cookies_dir", return_value="/tmp/popweb-test-cookies"
     ):
-        return window_module.WebWindow(fake_qt._Size(1920, 1080))
+        return window_module.WebWindow(
+            fake_qt._Size(1920, 1080), module_name=module_name, sizes=sizes
+        )
 
 
 class PostGuiTest(unittest.TestCase):
@@ -335,6 +355,23 @@ class WindowResizeTest(unittest.TestCase):
         self.window.forget_user_size()
         self.window.resize(300, 200)
         self.assertEqual((self.window.width(), self.window.height()), (300, 200))
+
+    def test_a_saved_size_is_loaded_and_a_drag_updates_it(self):
+        """The previous session's size wins, and a new drag is written back."""
+        sizes = FakeSizes({"dict_bing": (640, 480)})
+        window = make_window(sizes=sizes, module_name="dict_bing")
+        self.assertEqual(window.user_size, (640, 480))
+        window.resize(300, 200)
+        self.assertEqual((window.width(), window.height()), (640, 480))
+
+        window.move(100, 100)
+        press = FakeMouseEvent(fake_qt.QEvent.Type.MouseButtonPress, 2, 2, 102, 102)
+        self.assertTrue(window.eventFilter(window, press))
+        move = FakeMouseEvent(fake_qt.QEvent.Type.MouseMove, 20, 20, 300, 300)
+        self.assertTrue(window.eventFilter(window, move))
+        release = FakeMouseEvent(fake_qt.QEvent.Type.MouseButtonRelease, 20, 20, 300, 300)
+        self.assertTrue(window.eventFilter(window, release))
+        self.assertEqual(sizes.written, [("dict_bing", window.width(), window.height())])
 
     def test_resize_to_fit_grows_but_does_not_clip(self):
         """A larger content size wins; a smaller one keeps the dragged size."""

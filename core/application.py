@@ -14,6 +14,7 @@ and do their work through a signal; the returned value of such a method is
 
 from __future__ import annotations
 
+import os
 import threading
 import traceback
 from typing import Any, Dict, List, Tuple
@@ -29,6 +30,7 @@ from . import extension
 from .bridge import (
     close_epc_client,
     eval_in_emacs,
+    get_emacs_config_dir,
     get_emacs_func_result,
     get_emacs_var,
     get_emacs_vars,
@@ -36,6 +38,7 @@ from .bridge import (
 )
 from .cookies import CookiesManager
 from .geometry import adjust_render_pos as compute_render_pos
+from .sizes import WindowSizes
 from .window import PostGui, WebWindow
 
 
@@ -62,6 +65,7 @@ class POPWEB:
 
         self.web_window_dict: Dict[str, WebWindow] = {}
         self.module_dict: Dict[str, Any] = {}
+        self.window_sizes = WindowSizes(os.path.join(get_emacs_config_dir(), "sizes.json"))
 
         self.get_emacs_func_result = get_emacs_func_result
 
@@ -133,7 +137,11 @@ class POPWEB:
     def get_web_window(self, module_name: str) -> WebWindow:
         """Return the web window of MODULE_NAME, creating it on first use."""
         if module_name not in self.web_window_dict:
-            self.web_window_dict[module_name] = WebWindow(self.screen_size)
+            self.web_window_dict[module_name] = WebWindow(
+                screen_size=self.screen_size,
+                module_name=module_name,
+                sizes=self.window_sizes,
+            )
 
         return self.web_window_dict[module_name]
 
@@ -206,14 +214,18 @@ class POPWEB:
         """Forget the size the user dragged for MODULE-NAME, or for all popups.
 
         A dragged size is remembered per module so that the next popup of the
-        same extension keeps it.  After this call the extension controls the
-        size again; a module name that has no window is ignored.
+        same extension keeps it, and it is saved to disk.  After this call the
+        extension controls the size again; the saved size is removed even for
+        a module whose window has not been created in this session.
         """
         if module_name in (None, ""):
+            self.window_sizes.clear()
             for web_window in self.web_window_dict.values():
                 web_window.forget_user_size()
-        elif module_name in self.web_window_dict:
-            self.web_window_dict[module_name].forget_user_size()
+        else:
+            self.window_sizes.clear(module_name)
+            if module_name in self.web_window_dict:
+                self.web_window_dict[module_name].forget_user_size()
 
     @PostGui()
     def build_web_channel(

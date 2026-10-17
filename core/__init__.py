@@ -5,6 +5,7 @@
 - `bridge` talks to Emacs over EPC.
 - `geometry` computes where a popup window goes.
 - `cookies` reads and writes the cookies imported from a browser.
+- `sizes` persists the sizes the user dragged, one JSON file per session.
 - `window` owns the Qt window and the web page in it.
 - `application` is the object Emacs calls into, and owns the module cache.
 - `extension` loads the Python half of an extension by file name.
