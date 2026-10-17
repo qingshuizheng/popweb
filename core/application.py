@@ -71,19 +71,36 @@ class POPWEB:
 
         eval_in_emacs("popweb--first-start", [self.server.server_address[1]])
 
-        # Do not use the system proxy: a page would otherwise wait for a proxy
-        # that is not reachable, which makes every popup slow.
-        QNetworkProxyFactory.setUseSystemConfiguration(False)
-
-        (proxy_host, proxy_port, proxy_type) = get_emacs_vars(
-            ["popweb-proxy-host", "popweb-proxy-port", "popweb-proxy-type"]
+        # An explicit proxy wins over the system one.  Following the system
+        # proxy only when asked keeps upstream's default: a popup must not wait
+        # for a proxy that happens to be configured but is not reachable.
+        (proxy_host, proxy_port, proxy_type, use_system_proxy) = get_emacs_vars(
+            [
+                "popweb-proxy-host",
+                "popweb-proxy-port",
+                "popweb-proxy-type",
+                "popweb-use-system-proxy",
+            ]
         )
 
         self.proxy: Tuple[Any, Any, Any] = (proxy_type, proxy_host, proxy_port)
         self.is_proxy = False
 
-        if proxy_type != "" and proxy_host != "" and proxy_port != "":
+        self.configure_proxy(bool(use_system_proxy))
+
+    def configure_proxy(self, use_system_proxy: bool) -> None:
+        """Apply the explicit proxy, or fall back to the system proxy.
+
+        The explicit `popweb-proxy-*' triple always wins.  When it is not set,
+        USE_SYSTEM_PROXY asks Qt for the proxy of the operating system, which
+        is the same setting a browser follows; with neither, pages are loaded
+        directly.
+        """
+        if self.proxy[0] != "" and self.proxy[1] != "" and self.proxy[2] != "":
+            QNetworkProxyFactory.setUseSystemConfiguration(False)
             self.enable_proxy()
+        else:
+            QNetworkProxyFactory.setUseSystemConfiguration(bool(use_system_proxy))
 
     def enable_proxy(self) -> None:
         """Apply the proxy settings that were read from Emacs."""

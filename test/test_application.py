@@ -21,7 +21,7 @@ from test import fake_qt  # noqa: E402  (installs PyQt6 substitutes)
 fake_qt.install()
 
 from core import application, extension  # noqa: E402
-from test.fake_qt import QNetworkProxy, QUrl, QWebEngineView  # noqa: E402
+from test.fake_qt import QNetworkProxy, QNetworkProxyFactory, QUrl, QWebEngineView  # noqa: E402
 
 EXTENSION_SOURCE = """
 class Handler:
@@ -216,6 +216,7 @@ class ProxyTest(unittest.TestCase):
         self.app = make_app(self.tmp.name)
         self.app.proxy = ("http", "127.0.0.1", "8080")
         QNetworkProxy.application_proxy = None
+        QNetworkProxyFactory.use_system_configuration = True
 
     def test_enable_proxy_sets_type_host_and_port(self):
         """The HTTP proxy is installed as the application proxy."""
@@ -244,6 +245,30 @@ class ProxyTest(unittest.TestCase):
         self.app.toggle_proxy()
         self.assertTrue(self.app.is_proxy)
         self.app.toggle_proxy()
+        self.assertFalse(self.app.is_proxy)
+
+    def test_explicit_proxy_wins_over_the_system_proxy(self):
+        """An explicit proxy turns the system lookup off and installs itself."""
+        self.app.configure_proxy(True)
+        self.assertFalse(QNetworkProxyFactory.use_system_configuration)
+        self.assertTrue(self.app.is_proxy)
+        self.assertIsNotNone(QNetworkProxy.application_proxy)
+
+    def test_system_proxy_is_used_without_an_explicit_one(self):
+        """With no explicit proxy, the option controls the system lookup."""
+        self.app.proxy = ("", "", "")
+        QNetworkProxyFactory.use_system_configuration = False
+        self.app.configure_proxy(True)
+        self.assertTrue(QNetworkProxyFactory.use_system_configuration)
+        self.assertFalse(self.app.is_proxy)
+        self.assertIsNone(QNetworkProxy.application_proxy)
+
+    def test_system_proxy_stays_off_when_not_requested(self):
+        """The upstream default is direct connections, not the system proxy."""
+        self.app.proxy = ("", "", "")
+        QNetworkProxyFactory.use_system_configuration = True
+        self.app.configure_proxy(False)
+        self.assertFalse(QNetworkProxyFactory.use_system_configuration)
         self.assertFalse(self.app.is_proxy)
 
 

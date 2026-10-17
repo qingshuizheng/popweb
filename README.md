@@ -154,6 +154,18 @@ would leave the frame.
 `popweb-proxy-type` is either `"http"` or `"socks5"`; leave all three empty to
 use no proxy.
 
+To follow the proxy of the operating system (the one a browser uses) instead
+of naming it, turn on `popweb-use-system-proxy`:
+
+```elisp
+(setq popweb-use-system-proxy t)
+```
+
+An explicit proxy still wins over the system one.  This matters for a page
+that loads directly but embeds its player from another domain: YouGlish is
+served by youglish.com, while its player is a YouTube embed, and only the
+latter may need the proxy.
+
 ### Font size
 
 `popweb-zoom-factor` scales the page.  On screens wider than 3000 pixels the

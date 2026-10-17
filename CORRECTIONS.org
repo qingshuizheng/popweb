@@ -82,6 +82,24 @@ Pinned by: `test/popweb-process-test.el'
 (`popweb-process-test-start-when-dead-remembers-the-arguments' and
 `popweb-process-test-first-start-calls-back-with-no-arguments').
 
+** Added: `popweb-use-system-proxy'
+
+Upstream always calls `QNetworkProxyFactory.setUseSystemConfiguration(False)`
+and then uses only an explicitly configured proxy.  A page that loads directly
+while its player is embedded from a blocked domain therefore cannot play, even
+when the operating system already has a proxy for exactly that domain:
+YouGlish is served by youglish.com and plays a YouTube embed, and only the
+embed needs the proxy.
+
+The new option, default nil, keeps upstream's behaviour unless it is turned
+on; then Qt is asked for the system proxy when the `popweb-proxy-*' triple is
+empty.  An explicit proxy always wins.  `core/application.py' now has
+`configure_proxy' for this decision, so it is testable without starting the
+process.
+
+Pinned by: `test/test_application.py::ProxyTest` (three tests: explicit wins,
+system proxy on request, direct by default).
+
 ** Fixed: Anki review details
 
 * `popweb-anki-review--sentence' was defined twice; the second definition only

@@ -17,6 +17,7 @@
   (should (equal popweb-proxy-host ""))
   (should (equal popweb-proxy-port ""))
   (should (equal popweb-proxy-type ""))
+  (should-not popweb-use-system-proxy)
   (should (equal popweb-popup-pos "point-bottom-right"))
   (should-not popweb-enable-debug)
   (should-not popweb-enable-developer-tools)

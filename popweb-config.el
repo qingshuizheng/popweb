@@ -83,6 +83,20 @@ off, because the Python side only knows how to map those two names to Qt."
                  (const "socks5"))
   :group 'popweb)
 
+(defcustom popweb-use-system-proxy nil
+  "Whether to follow the system proxy when no explicit proxy is configured.
+When this is non-nil and the three `popweb-proxy-*' options are not all set,
+the Python process asks Qt for the proxy of the operating system, which is the
+same setting a browser follows.  An explicit proxy always wins over this
+option, and with neither pages are loaded directly.
+
+This matters for a page that loads its player from another domain, such as
+YouGlish embedding YouTube: the page itself may be reachable directly while
+the player is not, and the system proxy is usually already configured for the
+domains that need it."
+  :type 'boolean
+  :group 'popweb)
+
 (defcustom popweb-popup-pos "point-bottom-right"
   "Where a popup is placed on the screen.
 The position is computed by the Python side from the cursor coordinate and
