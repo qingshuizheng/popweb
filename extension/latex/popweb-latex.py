@@ -51,10 +51,13 @@ def adjust_latex_window(
         render_width = int(render_width * web_window.zoom_factor * 1.2)
         render_height = int(render_height * web_window.zoom_factor)
 
-        web_window.render_width = render_width
-        web_window.render_height = render_height
         web_window.update_theme_mode()
-        web_window.resize(render_width, render_height)
+        # A formula that needs more room grows the window even after the user
+        # dragged it; a smaller one keeps the dragged size instead of
+        # clipping the formula.
+        web_window.resize_to_fit(render_width, render_height)
+        web_window.render_width = web_window.width()
+        web_window.render_height = web_window.height()
 
     window_x, window_y = popweb.adjust_render_pos(
         window_x,

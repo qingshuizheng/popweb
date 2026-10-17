@@ -73,5 +73,16 @@ visits the domain."
                     (popweb-call-async "import_browser_cookies" browser domain-name))
                 nil))
 
+;;;###autoload
+(defun popweb-forget-window-sizes ()
+  "Forget popup sizes set by dragging, so extensions size them again.
+The size a user drags is remembered per extension module for the rest of the
+session.  This command returns the choice to the extensions; it only needs the
+Python process for windows that already exist."
+  (interactive)
+  (popweb-start (lambda (&rest _)
+                  (popweb-call-async "forget_window_sizes"))
+                nil))
+
 (provide 'popweb)
 ;;; popweb.el ends here

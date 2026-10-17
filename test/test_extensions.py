@@ -125,7 +125,26 @@ class FakeWebWindow:
 
     def resize(self, width, height):
         """Remember the size."""
+        if getattr(self, "user_size", None) is not None:
+            width, height = self.user_size
+        self.size = (int(width), int(height))
+
+    def resize_to_fit(self, width, height):
+        """Grow to the content, but never below a size the user dragged."""
+        width, height = int(width), int(height)
+        if getattr(self, "user_size", None) is not None:
+            width = max(width, self.user_size[0])
+            height = max(height, self.user_size[1])
+            self.user_size = (width, height)
         self.size = (width, height)
+
+    def width(self):
+        """Return the current width."""
+        return self.size[0] if self.size else 0
+
+    def height(self):
+        """Return the current height."""
+        return self.size[1] if self.size else 0
 
     def move(self, x, y):
         """Remember the position."""

@@ -86,7 +86,11 @@ class QObject:
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Ignore ARGS and KWARGS, like the real base class does with a parent."""
-        pass
+        self.event_filter = None
+
+    def installEventFilter(self, event_filter: Any) -> None:
+        """Remember EVENT_FILTER; the fake never calls it."""
+        self.event_filter = event_filter
 
 
 class QVariant:
@@ -163,6 +167,54 @@ class _Screen:
         return self._size
 
 
+class _Point:
+    """Point with the two accessors Qt code uses."""
+
+    def __init__(self, x: int = 0, y: int = 0) -> None:
+        """Store X and Y."""
+        self._x = x
+        self._y = y
+
+    def x(self) -> int:
+        """Return the x coordinate."""
+        return self._x
+
+    def y(self) -> int:
+        """Return the y coordinate."""
+        return self._y
+
+    def toPoint(self) -> "_Point":
+        """Return a copy, like QPointF.toPoint."""
+        return _Point(self._x, self._y)
+
+
+class _Rect:
+    """Rectangle with the four accessors geometry() returns."""
+
+    def __init__(self, x: int = 0, y: int = 0, width: int = 0, height: int = 0) -> None:
+        """Store the rectangle."""
+        self._x = x
+        self._y = y
+        self._width = width
+        self._height = height
+
+    def x(self) -> int:
+        """Return the left edge."""
+        return self._x
+
+    def y(self) -> int:
+        """Return the top edge."""
+        return self._y
+
+    def width(self) -> int:
+        """Return the width."""
+        return self._width
+
+    def height(self) -> int:
+        """Return the height."""
+        return self._height
+
+
 class QWidget(QObject):
     """Widget that records its geometry, visibility and window flags."""
 
@@ -176,6 +228,8 @@ class QWidget(QObject):
         self.margins = None
         self.layout_obj = None
         self.event_filter = None
+        self.mouse_tracking = False
+        self.cursor = None
 
     def setWindowFlags(self, flags: int) -> None:
         """Remember FLAGS."""
@@ -196,6 +250,43 @@ class QWidget(QObject):
     def move(self, x: int, y: int) -> None:
         """Remember the new position."""
         self._position = (x, y)
+
+    def setGeometry(self, x: int, y: int, width: int, height: int) -> None:
+        """Remember the new position and size."""
+        self._position = (x, y)
+        self._size = (width, height)
+
+    def geometry(self) -> _Rect:
+        """Return the recorded geometry."""
+        return _Rect(self._position[0], self._position[1], self._size[0], self._size[1])
+
+    def width(self) -> int:
+        """Return the recorded width."""
+        return self._size[0]
+
+    def height(self) -> int:
+        """Return the recorded height."""
+        return self._size[1]
+
+    def mapTo(self, parent: Any, point: _Point) -> _Point:
+        """Return POINT unchanged; the fake has no nested widgets."""
+        return point
+
+    def window(self) -> "QWidget":
+        """Return the top level widget, which is this one in the fake."""
+        return self
+
+    def setMouseTracking(self, enabled: bool) -> None:
+        """Remember whether mouse tracking is on."""
+        self.mouse_tracking = enabled
+
+    def setCursor(self, shape: Any) -> None:
+        """Remember the cursor shape."""
+        self.cursor = shape
+
+    def unsetCursor(self) -> None:
+        """Forget the cursor shape."""
+        self.cursor = None
 
     def show(self) -> None:
         """Mark the widget visible."""
@@ -369,6 +460,10 @@ class QWebEngineView(QWidget):
     def settings(self) -> QWebEngineSettings:
         """Return the settings object."""
         return self._settings
+
+    def focusProxy(self) -> Any:
+        """Return no focus proxy, like a view before one is created."""
+        return None
 
     def setZoomFactor(self, factor: float) -> None:
         """Remember FACTOR."""
@@ -633,6 +728,33 @@ class _Qt:
         WindowDoesNotAcceptFocus = 8
         ToolTip = 16
 
+    class MouseButton:
+        """The mouse buttons the window filter compares against."""
+
+        LeftButton = "left"
+        RightButton = "right"
+
+    class CursorShape:
+        """The cursor shapes used for the resize edges."""
+
+        ArrowCursor = "arrow"
+        SizeHorCursor = "size-horizontal"
+        SizeVerCursor = "size-vertical"
+        SizeFDiagCursor = "size-diagonal"
+        SizeBDiagCursor = "size-back-diagonal"
+
+
+class QEvent:
+    """Event types the window filter reacts to."""
+
+    class Type:
+        """The subset of event types popweb handles."""
+
+        MouseButtonPress = "mouse-press"
+        MouseButtonRelease = "mouse-release"
+        MouseButtonDblClick = "mouse-double-click"
+        MouseMove = "mouse-move"
+
 
 def _module(name: str, **attributes: Any) -> types.ModuleType:
     """Create a module called NAME with ATTRIBUTES."""
@@ -663,6 +785,7 @@ def install() -> None:
         QEventLoop=QEventLoop,
         QUrl=QUrl,
         Qt=_Qt,
+        QEvent=QEvent,
         QDateTime=QDateTime,
         QTimer=QTimer,
     )

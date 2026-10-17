@@ -18,7 +18,7 @@ import functools
 import os
 import platform
 import traceback
-from typing import Any
+from typing import Any, Optional, Tuple
 
 # NOTE: QtWebEngineWidgets must be imported before a QCoreApplication instance
 # is created, which is why this import comes before any other PyQt6 import.
@@ -35,6 +35,69 @@ from .cookies import CookiesManager
 
 PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 """Directory of popweb.py, which is also where darkreader.js lives."""
+
+RESIZE_MARGIN = 8
+"""Pixels from an edge that start a drag-resize of the popup."""
+
+MIN_WINDOW_WIDTH = 160
+"""Smallest width a popup can be dragged to."""
+
+MIN_WINDOW_HEIGHT = 100
+"""Smallest height a popup can be dragged to."""
+
+
+def resize_edges(
+    x: float, y: float, width: float, height: float, margin: float = RESIZE_MARGIN
+) -> Tuple[bool, bool, bool, bool]:
+    """Return the window edges that the point (X, Y) is close enough to grab.
+
+    The result is (LEFT, TOP, RIGHT, BOTTOM).  A point in the middle of the
+    window, or one that is not in a WIDTH by HEIGHT window at all, has all
+    four flags nil.
+    """
+    return (x <= margin, y <= margin, x >= width - margin, y >= height - margin)
+
+
+def resized_geometry(
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    dx: float,
+    dy: float,
+    edges: Tuple[bool, bool, bool, bool],
+) -> Tuple[int, int, int, int]:
+    """Return the geometry after dragging EDGES by DX and DY.
+
+    EDGES comes from `resize_edges'.  A left or top edge moves the origin as
+    it resizes, so the opposite edge stays where it was; a right or bottom
+    edge only changes the size.  The result never goes below
+    `MIN_WINDOW_WIDTH' or `MIN_WINDOW_HEIGHT'.
+    """
+    left, top, right, bottom = edges
+    new_x, new_y, new_width, new_height = x, y, width, height
+
+    if left:
+        new_x = x + dx
+        new_width = width - dx
+    elif right:
+        new_width = width + dx
+    if top:
+        new_y = y + dy
+        new_height = height - dy
+    elif bottom:
+        new_height = height + dy
+
+    if new_width < MIN_WINDOW_WIDTH:
+        if left:
+            new_x = x + width - MIN_WINDOW_WIDTH
+        new_width = MIN_WINDOW_WIDTH
+    if new_height < MIN_WINDOW_HEIGHT:
+        if top:
+            new_y = y + height - MIN_WINDOW_HEIGHT
+        new_height = MIN_WINDOW_HEIGHT
+
+    return int(new_x), int(new_y), int(new_width), int(new_height)
 
 
 class PostGui(QtCore.QObject):
@@ -194,7 +257,24 @@ class WebWindow(QWidget):
         self.vbox.addWidget(self.webview)
         self.setLayout(self.vbox)
 
+        # A size the user dragged wins over the size an extension computes;
+        # `forget_user_size' gives control back to the extension.
+        self.user_size: Optional[Tuple[int, int]] = None
+        self._resize_edges: Optional[Tuple[bool, bool, bool, bool]] = None
+        self._resize_start: Any = None
+        self._resize_start_geometry: Any = None
+        self._cursor_widget: Any = None
+
+        # The web view renders into a child widget, which receives the mouse
+        # events; the application-wide filter is what sees them on every
+        # platform.  The direct filter covers a plain QWebEngineView.
         self.webview.installEventFilter(self)
+        for tracked_widget in (self.webview, self.webview.focusProxy()):
+            if tracked_widget is not None:
+                tracked_widget.setMouseTracking(True)
+        application = QApplication.instance()
+        if application is not None:
+            application.installEventFilter(self)
 
         self.settings = self.webview.settings()
         try:
@@ -211,6 +291,121 @@ class WebWindow(QWidget):
             self.settings.setAttribute(QWebEngineSettings.WebAttribute.ShowScrollBars, False)
         except Exception:
             traceback.print_exc()
+
+    def resize(self, width: int, height: int) -> None:
+        """Resize the window, unless the user dragged it to a size of their own.
+
+        A dragged size is remembered per window (one window per extension
+        module), so the next popup of the same module keeps it.  Extensions
+        still call `resize' with the size they computed; this override is
+        where the user's choice wins.  `forget_user_size' removes it.
+        """
+        if self.user_size is not None:
+            width, height = self.user_size
+        super().resize(int(width), int(height))
+
+    def resize_to_fit(self, width: int, height: int) -> None:
+        """Resize to at least WIDTH by HEIGHT, keeping a larger dragged size.
+
+        This is for a popup whose size depends on its content, such as the
+        LaTeX preview: a formula that needs more room grows the window even
+        after the user dragged it, while a smaller formula keeps the dragged
+        size instead of clipping.
+        """
+        width, height = int(width), int(height)
+        if self.user_size is not None:
+            width = max(width, self.user_size[0])
+            height = max(height, self.user_size[1])
+            self.user_size = (width, height)
+        super().resize(width, height)
+
+    def forget_user_size(self) -> None:
+        """Forget the size set by dragging, so extensions size the popup again."""
+        self.user_size = None
+
+    def eventFilter(self, watched: Any, event: Any) -> bool:
+        """Resize the frameless window when the user drags one of its edges.
+
+        The filter is installed on the web view and on the application, so it
+        sees the events that the web engine delivers to its internal render
+        widget.  An event outside this window, or one that does not start on
+        an edge, is left to Qt and to the page.
+        """
+        if not isinstance(watched, QWidget):
+            return False
+        if watched is not self and watched.window() is not self:
+            return False
+
+        event_type = event.type()
+        if event_type == QtCore.QEvent.Type.MouseButtonPress:
+            if event.button() != Qt.MouseButton.LeftButton:
+                return False
+            x, y = self._mouse_point(watched, event)
+            edges = resize_edges(x, y, self.width(), self.height())
+            if any(edges):
+                self._resize_edges = edges
+                self._resize_start = event.globalPosition().toPoint()
+                self._resize_start_geometry = self.geometry()
+                return True
+        elif event_type == QtCore.QEvent.Type.MouseMove:
+            x, y = self._mouse_point(watched, event)
+            if self._resize_edges is None:
+                self._update_resize_cursor(watched, x, y)
+            else:
+                point = event.globalPosition().toPoint()
+                dx = point.x() - self._resize_start.x()
+                dy = point.y() - self._resize_start.y()
+                geometry = self._resize_start_geometry
+                super().setGeometry(
+                    *resized_geometry(
+                        geometry.x(),
+                        geometry.y(),
+                        geometry.width(),
+                        geometry.height(),
+                        dx,
+                        dy,
+                        self._resize_edges,
+                    )
+                )
+                return True
+        elif event_type == QtCore.QEvent.Type.MouseButtonRelease:
+            if self._resize_edges is not None:
+                self.user_size = (self.width(), self.height())
+                self._resize_edges = None
+                self._resize_start = None
+                self._resize_start_geometry = None
+                return True
+        return False
+
+    def _mouse_point(self, watched: Any, event: Any) -> Tuple[int, int]:
+        """Return the event position in the window's coordinates."""
+        point = event.position().toPoint()
+        if watched is not self:
+            point = watched.mapTo(self, point)
+        return int(point.x()), int(point.y())
+
+    def _update_resize_cursor(self, watched: Any, x: int, y: int) -> None:
+        """Show the resize cursor when (X, Y) is on an edge, and clear it after."""
+        left, top, right, bottom = resize_edges(x, y, self.width(), self.height())
+        if (left and top) or (right and bottom):
+            shape = Qt.CursorShape.SizeFDiagCursor
+        elif (left and bottom) or (right and top):
+            shape = Qt.CursorShape.SizeBDiagCursor
+        elif left or right:
+            shape = Qt.CursorShape.SizeHorCursor
+        elif top or bottom:
+            shape = Qt.CursorShape.SizeVerCursor
+        else:
+            shape = None
+
+        if shape is not None:
+            if self._cursor_widget is not None and self._cursor_widget is not watched:
+                self._cursor_widget.unsetCursor()
+            watched.setCursor(shape)
+            self._cursor_widget = watched
+        elif self._cursor_widget is not None:
+            self._cursor_widget.unsetCursor()
+            self._cursor_widget = None
 
     def popup(self) -> None:
         """Show the window, and the developer tools when they are enabled."""

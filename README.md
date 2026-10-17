@@ -175,6 +175,31 @@ Python side doubles it automatically.
 (setq popweb-zoom-factor 1.5)
 ```
 
+### Dictionary popup size
+
+`popweb-dict-web-window-width-scale` and
+`popweb-dict-web-window-height-scale` size a dictionary popup as a fraction
+of the Emacs frame, 0.3 and 0.5 by default.  They are read on every popup, so
+a change takes effect on the next translation:
+
+```elisp
+(setq popweb-dict-web-window-width-scale 0.45)
+(setq popweb-dict-web-window-height-scale 0.6)
+```
+
+### Resizing a popup
+
+Drag any edge or corner of a popup to resize it; the pointer changes shape
+within a few pixels of the edge.  The size is remembered per extension module
+for the rest of the session, so a later popup of the same module keeps it
+instead of using the size the extension computed.  `M-x
+popweb-forget-window-sizes` gives the choice back to the extensions.
+
+A popup that measures its content, such as the LaTeX preview, still grows when
+the content needs more room; it only keeps a larger size that you dragged.
+Sizes are not written to disk, so a restart starts from the extension
+defaults.
+
 ### URL preview size
 
 The URL preview is either scaled to the Emacs frame or sized in pixels:

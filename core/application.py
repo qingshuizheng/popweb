@@ -202,6 +202,20 @@ class POPWEB:
                 web_window.developer_tools_view.hide()
 
     @PostGui()
+    def forget_window_sizes(self, module_name: Any = None) -> None:
+        """Forget the size the user dragged for MODULE-NAME, or for all popups.
+
+        A dragged size is remembered per module so that the next popup of the
+        same extension keeps it.  After this call the extension controls the
+        size again; a module name that has no window is ignored.
+        """
+        if module_name in (None, ""):
+            for web_window in self.web_window_dict.values():
+                web_window.forget_user_size()
+        elif module_name in self.web_window_dict:
+            self.web_window_dict[module_name].forget_user_size()
+
+    @PostGui()
     def build_web_channel(
         self,
         module_path: str,

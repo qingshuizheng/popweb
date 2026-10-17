@@ -27,6 +27,32 @@ from test.fake_qt import (  # noqa: E402
 )
 
 
+class FakeMouseEvent:
+    """Mouse event with the four methods the window filter calls."""
+
+    def __init__(self, event_type, x, y, global_x, global_y):
+        """Create an event at (X, Y) inside the window and (GLOBAL_X, GLOBAL_Y) on screen."""
+        self._type = event_type
+        self._position = fake_qt._Point(x, y)
+        self._global = fake_qt._Point(global_x, global_y)
+
+    def type(self):
+        """Return the event type."""
+        return self._type
+
+    def button(self):
+        """Return the pressed button."""
+        return fake_qt._Qt.MouseButton.LeftButton
+
+    def position(self):
+        """Return the position relative to the receiving widget."""
+        return self._position
+
+    def globalPosition(self):
+        """Return the position on the screen."""
+        return self._global
+
+
 class FakeWebView:
     """Minimal stand-in for the view, with a page that records scripts."""
 
@@ -239,6 +265,98 @@ class BrowserPageTest(unittest.TestCase):
         """A JavaScript expression without a value yields None."""
         page = window_module.BrowserPage()
         self.assertIsNone(page.execute_javascript("void 0"))
+
+
+class ResizeEdgesTest(unittest.TestCase):
+    """The pure arithmetic behind drag-resizing."""
+
+    def test_edges_are_detected_in_the_eight_pixel_band(self):
+        """Each edge and corner is recognised, the middle is not."""
+        self.assertEqual(window_module.resize_edges(2, 2, 400, 300), (True, True, False, False))
+        self.assertEqual(window_module.resize_edges(398, 298, 400, 300), (False, False, True, True))
+        self.assertEqual(window_module.resize_edges(2, 298, 400, 300), (True, False, False, True))
+        self.assertEqual(window_module.resize_edges(200, 150, 400, 300), (False, False, False, False))
+
+    def test_right_and_bottom_edges_only_change_the_size(self):
+        """Dragging the bottom right corner leaves the origin alone."""
+        self.assertEqual(
+            window_module.resized_geometry(100, 100, 400, 300, 20, 10, (False, False, True, True)),
+            (100, 100, 420, 310),
+        )
+
+    def test_left_and_top_edges_move_the_origin(self):
+        """Dragging the top left corner keeps the opposite edges in place."""
+        self.assertEqual(
+            window_module.resized_geometry(100, 100, 400, 300, 20, 10, (True, True, False, False)),
+            (120, 110, 380, 290),
+        )
+
+    def test_size_is_clamped_and_the_origin_follows(self):
+        """A drag past the minimum stops growing and keeps the right edge fixed."""
+        self.assertEqual(
+            window_module.resized_geometry(100, 100, 300, 200, 200, 150, (True, True, False, False)),
+            (240, 200, window_module.MIN_WINDOW_WIDTH, window_module.MIN_WINDOW_HEIGHT),
+        )
+
+
+class WindowResizeTest(unittest.TestCase):
+    """The remembered size and the drag that sets it."""
+
+    def setUp(self):
+        """Create a window at a known place and size."""
+        self.window = make_window()
+        self.window.resize(400, 300)
+        self.window.move(100, 100)
+
+    def drag(self, x, y, global_x, global_y, release=False):
+        """Send one mouse event to the window filter."""
+        event_type = fake_qt.QEvent.Type.MouseButtonRelease if release else fake_qt.QEvent.Type.MouseMove
+        event = FakeMouseEvent(event_type, x, y, global_x, global_y)
+        return self.window.eventFilter(self.window, event)
+
+    def test_a_dragged_size_wins_over_the_extension(self):
+        """After the drag, `resize' keeps the size the user chose."""
+        press = FakeMouseEvent(fake_qt.QEvent.Type.MouseButtonPress, 2, 2, 102, 102)
+        self.assertTrue(self.window.eventFilter(self.window, press))
+        self.assertTrue(self.drag(20, 20, 120, 120))
+        self.assertEqual(
+            (self.window.width(), self.window.height()), (382, 282)
+        )
+        self.assertTrue(self.drag(20, 20, 120, 120, release=True))
+        self.assertEqual(self.window.user_size, (382, 282))
+        self.window.resize(300, 200)
+        self.assertEqual((self.window.width(), self.window.height()), (382, 282))
+
+    def test_forget_user_size_returns_control_to_the_extension(self):
+        """Forgetting the drag lets the next extension size take effect."""
+        self.window.user_size = (500, 400)
+        self.window.resize(300, 200)
+        self.assertEqual((self.window.width(), self.window.height()), (500, 400))
+        self.window.forget_user_size()
+        self.window.resize(300, 200)
+        self.assertEqual((self.window.width(), self.window.height()), (300, 200))
+
+    def test_resize_to_fit_grows_but_does_not_clip(self):
+        """A larger content size wins; a smaller one keeps the dragged size."""
+        self.window.user_size = (400, 300)
+        self.window.resize_to_fit(500, 350)
+        self.assertEqual((self.window.width(), self.window.height()), (500, 350))
+        self.assertEqual(self.window.user_size, (500, 350))
+        self.window.resize_to_fit(200, 200)
+        self.assertEqual((self.window.width(), self.window.height()), (500, 350))
+
+    def test_a_press_in_the_middle_is_left_to_the_page(self):
+        """Only the edge band starts a resize."""
+        press = FakeMouseEvent(fake_qt.QEvent.Type.MouseButtonPress, 200, 150, 300, 250)
+        self.assertFalse(self.window.eventFilter(self.window, press))
+        self.assertIsNone(self.window._resize_edges)
+
+    def test_moving_over_an_edge_sets_the_cursor(self):
+        """The cursor changes while the pointer is in the edge band."""
+        self.drag(2, 150, 102, 250)
+        self.assertEqual(self.window.cursor, fake_qt._Qt.CursorShape.SizeHorCursor)
+        self.drag(200, 150, 300, 250)
+        self.assertIsNone(self.window.cursor)
 
 
 if __name__ == "__main__":

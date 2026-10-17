@@ -73,6 +73,20 @@ other systems, whichever of them is installed first."
   :type 'boolean
   :group 'popweb-dict)
 
+(defcustom popweb-dict-web-window-width-scale 0.3
+  "Width of a dictionary popup as a fraction of the Emacs frame width.
+The value is read when a popup is requested, so changing it affects the
+next translation without restarting the Python process."
+  :type 'number
+  :group 'popweb-dict)
+
+(defcustom popweb-dict-web-window-height-scale 0.5
+  "Height of a dictionary popup as a fraction of the Emacs frame height.
+The value is read when a popup is requested, so changing it affects the
+next translation without restarting the Python process."
+  :type 'number
+  :group 'popweb-dict)
+
 (defun popweb-dict-say-word (&optional word)
   "Play the pronunciation of WORD, or of the word at point when WORD is nil.
 Return the process that plays it, which can be nil when the platform command
@@ -163,8 +177,8 @@ INFO is a list whose first element is the word to translate." name)
                 (frame-y (cdr (frame-position)))
                 (frame-w (frame-outer-width))
                 (frame-h (frame-outer-height))
-                (width-scale 0.3)
-                (height-scale 0.5)
+                (width-scale popweb-dict-web-window-width-scale)
+                (height-scale popweb-dict-web-window-height-scale)
                 (word (nth 0 info))
                 (url (format ,url word))
                 (js-code (format "try { %s } catch (err) { console.log(err.message) }"

@@ -82,6 +82,23 @@ Pinned by: `test/popweb-process-test.el'
 (`popweb-process-test-start-when-dead-remembers-the-arguments' and
 `popweb-process-test-first-start-calls-back-with-no-arguments').
 
+** Added: draggable popup sizes and `popweb-forget-window-sizes'
+
+Upstream popups are frameless windows whose size is computed by the extension
+on every request; there is no edge to drag.  This branch adds an eight pixel
+edge/corner band that resizes the window, remembers the dragged size per
+extension module for the session, and lets a content-driven popup (the LaTeX
+preview) grow beyond it through `resize_to_fit' instead of clipping.  The
+extension protocol is unchanged: extensions keep calling `resize'.
+
+`M-x popweb-forget-window-sizes' clears the remembered sizes for the session.
+The arithmetic lives in `resize_edges' and `resized_geometry', which are pure
+and tested without Qt.
+
+Pinned by: `test/test_window.py' (the pure arithmetic, the remembered size,
+`resize_to_fit', the edge filter and the cursor) and
+`test/test_application.py::test_forget_window_sizes_clears_one_or_all'.
+
 ** Added: `popweb-use-system-proxy'
 
 Upstream always calls `QNetworkProxyFactory.setUseSystemConfiguration(False)`

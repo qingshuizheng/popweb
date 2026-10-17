@@ -58,9 +58,16 @@
     (should (equal (nth 0 captured) "bing dict(hello): "))
     (should (equal (nth 1 captured) "hello"))))
 
+(ert-deftest popweb-dict-test-size-defaults ()
+  "The popup uses three tenths of the frame width and half its height."
+  (should (= popweb-dict-web-window-width-scale 0.3))
+  (should (= popweb-dict-web-window-height-scale 0.5)))
+
 (ert-deftest popweb-dict-test-translate-sends-the-word-to-python ()
   "The request carries the site name, geometry, URL and JavaScript."
   (let ((popweb-dict-say-word-p nil)
+        (popweb-dict-web-window-width-scale 0.6)
+        (popweb-dict-web-window-height-scale 0.7)
         (popweb-dict-bing-web-window-visible-p nil)
         (calls nil))
     (cl-letf (((symbol-function 'popweb-get-cursor-coordinate)
@@ -86,8 +93,8 @@
       (should (equal (nth 0 payload) "dict_bing"))
       (should (equal (nth 1 payload) 10))
       (should (equal (nth 2 payload) -10))
-      (should (equal (nth 9 payload) 0.3))
-      (should (equal (nth 10 payload) 0.5))
+      (should (equal (nth 9 payload) 0.6))
+      (should (equal (nth 10 payload) 0.7))
       (should (equal (nth 11 payload)
                      "http://www.bing.com/dict/search?mkt=zh-cn&q=word"))
       (should (string-match-p "try {" (nth 12 payload)))

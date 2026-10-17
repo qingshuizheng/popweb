@@ -199,6 +199,24 @@ class ApplicationTest(unittest.TestCase):
             self.app.import_browser_cookies("no-such-browser", "example.com")
         printer.assert_called_once()
 
+    def test_forget_window_sizes_clears_one_or_all(self):
+        """The reset reaches every window, or only the named module."""
+        class Recorder:
+            def __init__(self):
+                self.calls = 0
+
+            def forget_user_size(self):
+                self.calls += 1
+
+        first, second = Recorder(), Recorder()
+        self.app.web_window_dict.update({"dict_bing": first, "url-preview": second})
+        self.app.forget_window_sizes()
+        self.assertEqual((first.calls, second.calls), (1, 1))
+        self.app.forget_window_sizes("dict_bing")
+        self.assertEqual((first.calls, second.calls), (2, 1))
+        self.app.forget_window_sizes("missing")
+        self.assertEqual((first.calls, second.calls), (2, 1))
+
     def test_cleanup_closes_the_client(self):
         """The cleanup method only closes the EPC client."""
         with mock.patch.object(application, "close_epc_client") as closer:
