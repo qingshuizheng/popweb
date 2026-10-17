@@ -39,8 +39,13 @@ def pop_translate_window(
     and JS_FILE_CODE_ARGS is passed to that content as its argument list.
     """
     web_window = popweb.get_web_window(module_name)
-    window_width = frame_w * width_scale
-    window_height = frame_h * height_scale
+    window_width = int(frame_w * width_scale)
+    window_height = int(frame_h * height_scale)
+
+    # Resize first: a size the user dragged wins inside `resize', and the
+    # placement has to clamp the window that will actually be shown.
+    web_window.resize(window_width, window_height)
+    window_width, window_height = web_window.width(), web_window.height()
     window_x, window_y = popweb.adjust_render_pos(
         x + x_offset,
         y + y_offset,
@@ -59,7 +64,6 @@ def pop_translate_window(
     web_window.js_file_code_args = js_file_code_args
     web_window.webview.setUrl(QUrl(url))
     web_window.update_theme_mode()
-    web_window.resize(int(window_width), int(window_height))
     web_window.move(int(window_x), int(window_y))
     web_window.popup()
 

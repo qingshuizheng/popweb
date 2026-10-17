@@ -381,8 +381,13 @@ def pop_anki_review_window(
             eval_in_emacs_func,
         )
 
-    window_width = frame_w * width_scale
-    window_height = frame_h * height_scale
+    window_width = int(frame_w * width_scale)
+    window_height = int(frame_h * height_scale)
+
+    # A dragged size wins inside `resize', so place the window that will
+    # actually be shown.
+    web_window.resize(window_width, window_height)
+    window_width, window_height = web_window.width(), web_window.height()
     window_x, window_y = popweb.adjust_render_pos(
         x + x_offset,
         y + y_offset,
@@ -406,6 +411,5 @@ def pop_anki_review_window(
     web_window.loading_js_code = ""
 
     web_window.update_theme_mode()
-    web_window.resize(int(window_width), int(window_height))
     web_window.move(int(window_x), int(window_y))
     web_window.popup()

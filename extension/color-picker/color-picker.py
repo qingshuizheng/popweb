@@ -41,10 +41,12 @@ def adjust_color_picker_window(
     render_width = int(render_width * web_window.zoom_factor)
     render_height = int(render_height * web_window.zoom_factor)
 
-    web_window.render_width = render_width
-    web_window.render_height = render_height
     web_window.update_theme_mode()
     web_window.resize(render_width, render_height)
+    render_width = web_window.width()
+    render_height = web_window.height()
+    web_window.render_width = render_width
+    web_window.render_height = render_height
 
     window_x, window_y = popweb.adjust_render_pos(
         window_x,

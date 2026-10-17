@@ -229,6 +229,32 @@ class DictExtensionTest(unittest.TestCase):
         self.assertEqual(window.theme_updates, 1)
         self.assertEqual(popweb.adjust_calls[-1], (40, 60, 30, 40, 300, 400, 100, 50, 1000, 800))
 
+    def test_a_dragged_size_is_used_for_placement(self):
+        """The extension resizes first and places the window at its real size."""
+        window = FakeWebWindow()
+        window.user_size = (500, 400)
+        popweb = FakePopweb({"dict_bing": window})
+        dict_module.pop_translate_window(
+            popweb,
+            "dict_bing",
+            10,
+            20,
+            30,
+            40,
+            100,
+            50,
+            1000,
+            800,
+            0.3,
+            0.5,
+            "https://example.com/?q=word",
+            "trim()",
+            "/nonexistent/extra.js",
+            None,
+        )
+        self.assertEqual(window.size, (500, 400))
+        self.assertEqual(popweb.adjust_calls[-1][4:6], (500, 400))
+
     def test_missing_js_file_is_reported_and_ignored(self):
         """A missing optional file leaves the page working without it."""
         output = io.StringIO()
