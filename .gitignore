@@ -1,7 +1,10 @@
 *.elc
 *.pyc
-/.log/
+__pycache__/
+/.venv/
+/.ruff_cache/
+/log/
 node_modules/
 dist/
 tags
-
+test.log

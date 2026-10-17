@@ -1,0 +1,126 @@
+* popweb 重构计划（分支 =refactor/full=）
+
+基线：上游 =manateelazycat/popweb= @ =86d72c6=（2024-10-05）。
+Elisp 与 Python 两侧同属本仓库，一起改；对外保持 **1:1 功能**：Emacs 公开命令与
+选项同名、EPC 方法名与参数形状不变、扩展插件协议（=popweb= 实例的三个方法）
+不变。**org-roam 扩展整体丢弃**（连同 README 的安装/截图/配置段）。
+
+** 目标
+
+1. **一比一还原**：翻译、LaTeX、取色器、URL 预览、Anki 复习四类弹窗的行为、
+   默认值、快捷键、生成的 HTML/JS 与上游一致；只修正下面「校正」列出的缺陷，
+   每条都有测试钉住。
+2. **docstring 完整**：Elisp 的 =defun=/=defmacro=/=defsubst=/=defvar=/=defconst=/
+   =defcustom=/=cl-defstruct=，Python 的 module/class/function 都有 docstring；
+   首行是完整句子，参数在正文里被提到，Elisp 不超过 80 列。
+3. **可验证**：ERT + Python =unittest= 测试，加机器判据（docstring/编译/协议/
+   覆盖），一条命令跑完。
+4. **去掉 org-roam**：=extension/org-roam/= 删除，README、加载路径、测试里不再出现。
+
+** 基线（重构开始前）
+
+*** docstring（=scripts/docstring-report.py=）
+
+| 范围 | definitions | missing |
+|------+-------------+---------|
+| 全仓库（含 =extension/=） | 273 | **140**（documented 48.7%）|
+| =popweb.py= | 58 | 45 |
+| =popweb.el= | 46 | 22 |
+| =popweb-epc.el=（vendored epcs.el） | 70 | 13 |
+| =extension/org-roam/=（将删除） | 21 | 18 |
+| 其余扩展 | 78 | 42 |
+
+*** byte-compile（Emacs 32.0.50）
+
+| 文件 | error | warning |
+|------+-------+---------|
+| =popweb.el= | **2**（=add-to-list= 用在 lexical 变量 =environments= 上） | 1（=x-color-values= 已废弃） |
+| =popweb-epc.el= | 0 | 5（docstring 超宽、=condition-case= 里引用了 ='error=） |
+| 其余 .el | 0 | 未测量（缺 =dash= 时无法编译） |
+
+=add-to-list= 那两处不只是编译告警：=add-to-list= 接收的是符号，在
+=lexical-binding= 下对局部变量会抛 =void-variable=。macOS 上因为
+=system-type= 是 =darwin= 而绕过了整段，Linux 上必炸；开启
+=popweb-enable-debug= 时 macOS 也炸。重构改为 =push= / =cl-pushnew=，语义不变。
+
+*** 测试 / CI
+
+上游**没有任何测试**，没有 CI。本分支补 ERT 与 Python 测试，以及
+=scripts/check-*.sh= 门禁和 GitHub Actions。
+
+** 目标结构
+
+*** Elisp
+
+| 文件 | 职责 |
+|------+------|
+| =popweb.el= | 门面：=require= 其余模块，autoload 命令（重启/退出/导入 cookie），=provide= |
+| =popweb-config.el= | =defgroup= 与全部 =defcustom=（唯一来源） |
+| =popweb-ipc.el= | EPC 客户端调用（=popweb-call-async= / =popweb-call-sync=）、Python→Elisp 的回调 =eval-in-emacs=、=get-emacs-var(s)=、Base64 编解码 |
+| =popweb-process.el= | Python 进程生命周期、EPC server、进程环境（DPI/Wayland/WSL）、首次启动握手 |
+| =popweb-geometry.el= | 光标坐标/偏移、frame 尺寸、主题模式与颜色换算 |
+| =popweb-deferred.el= | vendored =deferred.el=（符号前缀 =popweb-=") |
+| =popweb-epc.el= | vendored =epcs.el=（符号前缀 =popweb-=") |
+| =extension/dict/popweb-dict.el= | 词典弹窗（bing/youdao/youglish/dictcn） |
+| =extension/latex/popweb-latex.el= + =math-at-point.el= | KaTeX 预览 |
+| =extension/color-picker/popweb-color-picker.el= | 取色器（文件名与 =provide= 对齐，见「校正」） |
+| =extension/url-preview/popweb-url.el= | URL 预览 |
+| =extension/anki-review/popweb-anki-review.el= | Anki 复习弹窗 |
+
+*** Python
+
+| 文件 | 职责 |
+|------+------|
+| =popweb.py= | 入口：=QApplication=、=POPWEB=、=app.exec()=；macOS =LSBackgroundOnly= |
+| =core/bridge.py= | Emacs 侧访问：EPC client、参数转换、=get_emacs_var(s)=、=eval_in_emacs=、配置目录 |
+| =core/geometry.py= | =adjust_render_pos()= 纯函数（8 种 =popweb-popup-pos=） |
+| =core/cookies.py= | =CookiesManager=（磁盘 cookie 存取、browser_cookie3 导入） |
+| =core/window.py= | =PostGui=、=WebView=、=BrowserPage=、=WebWindow=（Qt 窗口、暗色模式、JS 注入） |
+| =core/application.py= | =POPWEB=：EPC server、模块注册表、web window 缓存、代理、WebChannel |
+| =core/extension.py= | 按路径加载扩展模块（=importlib=） |
+| =extension/*/*.py= | 各扩展的弹窗函数（只依赖 =popweb= 实例与 Qt，不 import =core=） |
+
+*** 扩展插件协议（保持不变）
+
+扩展 Python 模块由 Emacs 通过 =call_module_method= 加载，函数第一个参数是
+=POPWEB= 实例，其后是 Emacs 传来的参数。扩展只可调用：
+
+- =popweb.get_web_window(module_name)= → =WebWindow=
+- =popweb.adjust_render_pos(...)= → =(x, y)=
+- =popweb.build_web_channel(...)= → 无返回
+
+** 校正（与上游的差异，全部记录在 =CORRECTIONS.org=）
+
+1. =extension/color-picker/color-picker.el= → =popweb-color-picker.el=：上游
+   =provide= 是 =popweb-color-picker=，README 也让人 =(require 'popweb-color-picker)=，
+   按文件名加载必然失败。
+2. =popweb--build-process-environment= 用 =push= / =cl-pushnew= 代替 lexical 变量上的
+   =add-to-list=（上游在 Linux/debug 下抛 =void-variable=）。
+3. =WebWindow.eval_in_emacs= 显式接收参数列表，与模块级 =eval_in_emacs= 的签名一致
+   （上游靠 =*args= 恰好一个参数才成立）。
+4. =POPWEB.build_web_channel= 用 =setattr= 把 =pyqtSlot= 装饰到**真正的槽方法**上
+   （上游把装饰结果存成名为 =slot_method_name= 的新属性，QWebChannel 看不到
+   =expanded_on_bridge_cmd=）。
+5. =CookiesManager= 删掉 =domain_matching= 中 return 之后不可达的分支：上游实际
+   行为是「加载磁盘上所有域名」，重构保留该有效行为并写清楚。
+6. =popweb-anki-review.el= 删掉重复定义的 =popweb-anki-review--sentence=；
+   =popweb-anki-review.py= 的 =\[sound:...= 正则改为 raw string（消除 SyntaxWarning）。
+7. =popweb-latex.el= 不再 require =dash=；唯一的 =--> =线程宏展开为等价 =
+   =replace-regexp-in-string= 调用，依赖从 1 个降为 0。
+8. 删除死代码：=destroy_view_list=、=proxy_string= 全局（只写不读）。
+9. docstring 修正：=popweb--first-start= 提到不存在的
+   =WEBENGINE-INCLUDE-PRIVATE-CODEC=；=popweb-color-picker.el= 头部描述抄自
+   KaTeX 插件。
+
+** 验收
+
+一条命令跑完全部门禁：
+
+#+begin_src sh
+scripts/check-test.sh          # ERT + Python 测试
+scripts/check-elisp.sh         # 顶层 form 读取、定义有 body、编译零 warning、checkdoc
+scripts/check-python.sh        # py_compile、docstring、协议、ruff
+#+end_src
+
+量化判据：docstring missing 0；byte-compile warning 0；checkdoc finding 0；
+=test/= 覆盖每个非 vendored 源文件（=scripts/coverage-report.py=）。

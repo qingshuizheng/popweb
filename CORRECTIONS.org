@@ -1,0 +1,132 @@
+* Corrections to the upstream behaviour
+
+This branch restores popweb one to one: the commands, the options, the EPC
+methods, the extension protocol and the generated pages are the ones upstream
+had.  The list below is every place where the code does something different,
+why, and which test makes the difference visible.  Anything not listed here is
+meant to be indistinguishable from upstream.
+
+** Fixed: `add-to-list' on a lexical variable
+
+`popweb--build-process-environment' built a local list and then called
+`add-to-list' on it.  `add-to-list' takes a *symbol*, so with lexical binding
+the call signals `void-variable environments'.  On macOS the block is skipped
+because `system-type' is `darwin', which is why upstream appeared to work; on
+GNU/Linux it fails every time, and on macOS it fails as soon as
+`popweb-enable-debug' is on.
+
+The refactor uses `cl-pushnew' on the lexical list, which is what the original
+call was trying to do.
+
+Pinned by: `test/popweb-process-test.el' (all four environment tests).
+
+** Fixed: the colour picker could not be required
+
+The file is `extension/color-picker/color-picker.el' upstream, but it provides
+`popweb-color-picker' and the README tells users to
+`(require 'popweb-color-picker)'; that cannot find the file.  It is renamed to
+`popweb-color-picker.el'.  No command or option changes name.
+
+Pinned by: the file is loaded by the test suite, which would fail on a require.
+
+** Fixed: a list argument with a non-string element
+
+`convert_arg_to_str' joined the converted elements of a list with `+', so a
+number inside a list raised `TypeError'.  It now converts each element with
+`str' first.  A list of strings produces exactly the same text as before.
+
+Pinned by: `test/test_bridge.py::test_list_becomes_parenthesised'.
+
+** Fixed: an empty list became a list with one empty string
+
+Python sends an empty list as `"()"'.  The Elisp decoder split the inside of
+the parentheses, and `(split-string "" " ")' returns `("")', so the function
+was called with one empty argument instead of none.  The decoder now returns
+nil for empty parentheses.
+
+Pinned by: `test/popweb-ipc-test.el::popweb-ipc-test-decode-argument-empty-list'.
+
+** Changed: the web channel slot is decorated where Qt looks for it
+
+`POPWEB.build_web_channel' applied `pyqtSlot' to the method and stored the
+result in a *new* attribute called `slot_method_name', leaving
+`expanded_on_bridge_cmd' undecorated.  QWebChannel publishes only Qt slots, so
+the Anki page had no method to call.  The decorator is applied to the real
+method name now.
+
+Pinned by: `test/test_application.py::test_build_web_channel_decorates_the_real_method'.
+
+** Kept, with the dead code removed: cookie domains
+
+`CookiesManager.domain_matching' returned True from its first statement; the
+domain comparison after it was unreachable.  The effective behaviour of
+upstream is therefore "load every directory of stored cookies", and this branch
+keeps exactly that, with a docstring that says so instead of carrying dead
+branches.  `get_relate_domains' still exists for `delete_cookie'; its optional
+`tld' import now falls back to the last two labels of the host when the module
+is absent, instead of raising ImportError.
+
+Pinned by: `test/test_cookies.py`.
+
+** Fixed: a first-start callback with no arguments was dropped
+
+`popweb-start' remembered the callback and its arguments, but
+`popweb--first-start' only ran the callback when the arguments were non-nil.
+`popweb-import-browser-cookies' queues a callback with nil arguments, so it
+worked only when the idle timer had already started the process; with
+`popweb-start-python-process-when-require' off it silently did nothing.  A
+separate pending flag now records that a callback is waiting, independently of
+the arguments it wants.
+
+Pinned by: `test/popweb-process-test.el'
+(`popweb-process-test-start-when-dead-remembers-the-arguments' and
+`popweb-process-test-first-start-calls-back-with-no-arguments').
+
+** Fixed: Anki review details
+
+* `popweb-anki-review--sentence' was defined twice; the second definition only
+  repeated the first.  One definition remains.
+* The `[sound:...]' pattern in `popweb-anki-review.py' was not a raw string, so Python
+  emitted a `SyntaxWarning' on every load.  It is raw now.
+* `popweb-anki-review-callback' and the media directory had the wrong
+  `:type' (a one element list instead of a type); they use `string' and
+  `directory' now.  The values and their meaning are unchanged.
+
+Pinned by: `test/popweb-anki-review-test.el' and
+`test/test_extensions.py::CallHandlerTest'.
+
+** Fixed: LaTeX source blocks were never previewed
+
+`webkit-katex-render--org-math-at-point' tested the language of a source block
+with `(cadr (nth 1 (org-element-at-point)))', which reads the first property
+value of the element rather than its language.  It now uses
+`org-element-property :language', so a latex source block reaches AUCTeX's
+`texmathp' as intended.
+
+Pinned by: `test/popweb-latex-test.el` (the fragment and environment paths; the
+source-block path needs AUCTeX and is not part of the automatic suite).
+
+** Removed: the dash dependency
+
+The only use of dash was one `-->' threading form in
+`popweb-latex-update'.  It is expanded to three bindings, which is what the
+macro produced.  The extension now needs no external Elisp package.
+
+Pinned by: `test/popweb-latex-test.el`.
+
+** Cosmetic and compiler clean-ups
+
+* `x-color-values' (obsolete since 30.1) is replaced by `color-values'.
+* `point-at-bol' (obsolete since 29.1) is replaced by `line-beginning-position'.
+* `condition-case' clauses no longer quote their condition (`'error' -> `error').
+* `popweb-color-name-to-hex' returns "#000000" for a frame that cannot resolve
+  the colour, instead of signaling inside the `nth'/`format' chain.
+* `WebView.__init__' calls `super().__init__()' instead of
+  `super(QWebEngineView, self).__init__()', which skips the Qt constructor of
+  the class being built.
+* Dead code removed: `destroy_view_list', the write-only `proxy_string'
+  global, and two long comment blocks that described code that no longer
+  exists.
+
+Pinned by: the byte-compile and checkdoc gates (`scripts/check-elisp.sh') and
+`test/popweb-geometry-test.el`.

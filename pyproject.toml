@@ -1,0 +1,36 @@
+[project]
+name = "popweb"
+version = "0.5.0"
+description = "Popup web windows for Emacs, rendered by a Python/Qt process"
+requires-python = ">=3.9"
+dependencies = [
+    "epc>=0.0.5",
+    "sexpdata>=1.0.2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# The same gate as scripts/check-python.sh: errors that hide bugs, undefined
+# names, bare excepts, trailing whitespace, and the docstring rules.  Style
+# choices that would only produce noise are ignored below.
+select = [
+    "E4", "E7", "E9",   # pycodestyle errors that hide bugs
+    "E722",             # bare except
+    "F",                # pyflakes
+    "W291", "W293",     # trailing whitespace
+    "D",                # pydocstyle: the docstring gate
+]
+ignore = [
+    "D203",   # conflicts with D211
+    "D213",   # conflicts with D212
+    "D107",   # __init__ docstring: the class docstring usually says enough
+    "D401",   # imperative mood: style pass, not enforced
+    "D403",   # first word capitalisation: style pass, not enforced
+]

@@ -1,0 +1,55 @@
+name: test
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  # Every gate this branch added, on the Emacs releases the tree is tested
+  # against.  `Package-Requires' still says 27.1, like upstream; 28.2 is the
+  # oldest release the Ubuntu action offers and the oldest the suite runs on.
+  gates:
+    name: gates (Emacs ${{ matrix.emacs_version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        emacs_version:
+          - "28.2"
+          - "29.4"
+          - "30.1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Emacs
+        uses: purcell/setup-emacs@master
+        with:
+          version: ${{ matrix.emacs_version }}
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install the Python dependencies
+        run: pip install epc sexpdata ruff
+
+      - name: The two halves agree on the EPC contract
+        run: python3 scripts/check-protocol.py
+
+      - name: Every form reads, then byte compile and checkdoc
+        run: ./scripts/check-elisp.sh
+
+      - name: Python gates (py_compile, docstrings, coverage, ruff)
+        run: ./scripts/check-python.sh
+
+      - name: Tests (ERT suites and the pure Python ones)
+        run: ./scripts/check-test.sh
+
+      - name: Upload the byte compiled output of a failure
+        uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: gates-log-${{ matrix.emacs_version }}
+          path: /tmp/popweb-elc
+          retention-days: 3

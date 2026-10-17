@@ -1,18 +1,39 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Any, Tuple
-from PyQt6.QtCore import QUrl, QObject, pyqtSlot, QVariant
-from PyQt6.QtWebChannel import QWebChannel
-import os
+"""Show the Anki cards that match a query in a popup window.
+
+The window loads `index.html', which embeds `tooltip.js'; that script draws
+the cards as tooltips over the page and sends commands back over QWebChannel.
+`CallHandler' receives those commands and turns them into AnkiConnect requests
+and Emacs calls.
+
+Anki must be running with the AnkiConnect add-on installed, listening on
+``127.0.0.1:8765``.  A missing Anki is not fatal: the error is reported in the
+popup, and the rest of popweb keeps working.
+"""
+
 import json
-import urllib.request
+import os
 import re
+import urllib.request
+from typing import Any, Tuple
+
+from PyQt6.QtCore import QObject, QUrl, QVariant, pyqtSlot
+
+ANKI_CONNECT_URL = "http://127.0.0.1:8765"
+"""URL of the AnkiConnect endpoint that the review popup talks to."""
 
 
-def get_tooltip_script(script_file) -> str:
-    ''' Read content of JavaScript(js) files.'''
+def get_tooltip_script(script_file):
+    """Return the HTML and JavaScript that the review page embeds.
+
+    SCRIPT_FILE is `tooltip.js'; its content is placed inside a script tag,
+    together with the stylesheet and the QWebChannel bootstrap that the page
+    needs.  A missing file is reported and replaced by an empty script, so the
+    page still loads and shows the error.
+    """
     if os.path.exists(script_file):
-        with open(script_file, 'r') as file:
+        with open(script_file, encoding="utf-8") as file:
             tooltip_script = file.read()
     else:
         print("Script file not found: %s\n" % script_file)
@@ -206,45 +227,90 @@ def get_tooltip_script(script_file) -> str:
     return web_content
 
 class CallHandler(QObject):
+    """The Python object that JavaScript calls through QWebChannel.
+
+    It is constructed with the `WebWindow' that owns the page, the Anki media
+    directory, and the name of the Emacs function to call for a dictionary
+    search.  The command format is a string that starts with a verb and
+    continues with its arguments, which is what `tooltip.js' sends.
+    """
+
     def __init__(self, web_window, *args):
-        super(CallHandler, self).__init__()
+        """Attach the handler to WEB_WINDOW, with ARGS as its settings."""
+        super().__init__()
         self.web_window = web_window
         self.media_directory = args[0]
         self.eval_in_emacs_func = args[1]
 
     def request(self, action, **params):
-        return {'action': action, 'params': params, 'version': 6}
+        """Return the AnkiConnect request object for ACTION and PARAMS."""
+        return {"action": action, "params": params, "version": 6}
 
     def invoke(self, action, **params):
-        requestJson = json.dumps(self.request(action, **params)).encode('utf-8')
-        response = json.load(urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8765', requestJson)))
+        """Run the AnkiConnect ACTION with PARAMS and return its result.
+
+        The reply is validated before it is used: an unexpected shape or a
+        non-null ``error`` field is raised, which the caller sees as a Python
+        exception rather than as a card with a missing field.
+        """
+        request_json = json.dumps(self.request(action, **params)).encode("utf-8")
+        response = json.load(urllib.request.urlopen(urllib.request.Request(ANKI_CONNECT_URL, request_json)))
         if len(response) != 2:
-            raise Exception('response has an unexpected number of fields')
-        if 'error' not in response:
-            raise Exception('response is missing required error field')
-        if 'result' not in response:
-            raise Exception('response is missing required result field')
-        if response['error'] is not None:
-            raise Exception(response['error'])
-        return response['result']
+            raise Exception("response has an unexpected number of fields")
+        if "error" not in response:
+            raise Exception("response is missing required error field")
+        if "result" not in response:
+            raise Exception("response is missing required result field")
+        if response["error"] is not None:
+            raise Exception(response["error"])
+        return response["result"]
 
     def get_nids(self, query):
+        """Return the Anki note ids that match QUERY."""
         return self.invoke("findNotes", query=query)
 
     def get_notes(self, query):
+        """Return the cards that match QUERY, each with its fields highlighted.
+
+        Every card is a pair of its note id and the HTML of its non-empty
+        fields, with the matches of QUERY wrapped in a ``mark`` element.  The
+        highlighting is case insensitive, which is how the search itself
+        behaves.
+        """
         nids = self.get_nids(query)
         notes = self.invoke("notesInfo", notes=nids)
-        return [[note.get("noteId"), re.sub(r"%s" % re.escape(query), f"<mark>{query}</mark>", "<hr/>".join(list(filter(None, map(lambda value:value.get("value") ,note.get("fields").values())))),  flags=re.I)] for note in notes]
+        return [
+            [
+                note.get("noteId"),
+                re.sub(
+                    r"%s" % re.escape(query),
+                    f"<mark>{query}</mark>",
+                    "<hr/>".join(
+                        list(filter(None, map(lambda value: value.get("value"), note.get("fields").values())))
+                    ),
+                    flags=re.I,
+                ),
+            ]
+            for note in notes
+        ]
 
     @pyqtSlot(QVariant, result=QVariant)
     def expanded_on_bridge_cmd(self, cmd: str) -> Tuple[bool, Any]:
+        """Run the command CMD that the page sent, and return its result.
 
+        The commands are ``rev-search`` (search Anki), ``rev-tt-edit`` (open
+        the note in Anki's editor), ``rev-tt-playsound`` (play the note's
+        sound file) and ``rev-tt-dictionary`` (send the word to the Emacs
+        callback named by `popweb-anki-review-callback').
+        """
         if cmd.startswith("rev-search "):
             tooltip_id = int(cmd.split()[1])
-            query      = " ".join(cmd.split()[2:])
+            query = " ".join(cmd.split()[2:])
             if (query.isascii() and len(query) >= 3) or (not query.isascii() and len(query) >= 2):
                 notes = self.get_notes(query)
-                self.web_window.webview.page().runJavaScript(f"setTooltipSearchResults({tooltip_id}, {json.dumps(notes)})")
+                self.web_window.webview.page().runJavaScript(
+                    f"setTooltipSearchResults({tooltip_id}, {json.dumps(notes)})"
+                )
             return (True, None)
 
         elif cmd.startswith("rev-tt-edit "):
@@ -255,8 +321,8 @@ class CallHandler(QObject):
             from playsound import playsound
 
             tooltip_id = int(cmd.split()[1])
-            note       = self.invoke("notesInfo", notes=[tooltip_id])
-            results    = re.findall('\[sound:(.+?\..+?)\]', str(note))
+            note = self.invoke("notesInfo", notes=[tooltip_id])
+            results = re.findall(r"\[sound:(.+?\..+?)\]", str(note))
 
             if not results:
                 return (True, None)
@@ -271,32 +337,71 @@ class CallHandler(QObject):
             query = cmd.split()[1:]
             self.web_window.eval_in_emacs(self.eval_in_emacs_func, query)
 
-def pop_anki_review_window(popweb, module_path, module_name, index_file, x, y,
-                           x_offset, y_offset, frame_x, frame_y, frame_w, frame_h,
-                           width_scale, height_scale, show_window,
-                           script_file, media_directory,
-                           new_query_p, emacs_query,
-                           eval_in_emacs_func):
 
+def pop_anki_review_window(
+    popweb,
+    module_path,
+    module_name,
+    index_file,
+    x,
+    y,
+    x_offset,
+    y_offset,
+    frame_x,
+    frame_y,
+    frame_w,
+    frame_h,
+    width_scale,
+    height_scale,
+    show_window,
+    script_file,
+    media_directory,
+    new_query_p,
+    emacs_query,
+    eval_in_emacs_func,
+):
+    """Show the review window of MODULE_NAME for EMACS_QUERY.
+
+    MODULE_PATH is the file that defines `CallHandler', and SCRIPT_FILE and
+    INDEX_FILE are the assets of the page.  NEW_QUERY_P says whether the page
+    has to be rebuilt for a new query; the window is created and its web
+    channel built on the first call only.  The remaining arguments are the
+    geometry that Emacs sent, passed to POPWEB for placement.
+    """
     web_window = popweb.get_web_window(module_name)
 
     if not hasattr(web_window.webview, "channel") and not hasattr(web_window.webview, "handler"):
-        popweb.build_web_channel(module_path, module_name,
-                                 "handler", "CallHandler",
-                                 "expanded_on_bridge_cmd",
-                                 media_directory, eval_in_emacs_func)
+        popweb.build_web_channel(
+            module_path,
+            module_name,
+            "handler",
+            "CallHandler",
+            "expanded_on_bridge_cmd",
+            media_directory,
+            eval_in_emacs_func,
+        )
 
     window_width = frame_w * width_scale
     window_height = frame_h * height_scale
-    window_x, window_y = popweb.adjust_render_pos(x + x_offset, y + y_offset,
-                                                  x_offset, y_offset,
-                                                  window_width, window_height,
-                                                  frame_x, frame_y,
-                                                  frame_w, frame_h)
+    window_x, window_y = popweb.adjust_render_pos(
+        x + x_offset,
+        y + y_offset,
+        x_offset,
+        y_offset,
+        window_width,
+        window_height,
+        frame_x,
+        frame_y,
+        frame_w,
+        frame_h,
+    )
 
-    index_html = open(index_file, "r").read().replace(
-        "QUERY_PLACEHOLD", emacs_query).replace(
-            "HEAD-PLACEHOLD", get_tooltip_script(script_file))
+    with open(index_file, encoding="utf-8") as index:
+        index_html = (
+            index.read()
+            .replace("QUERY_PLACEHOLD", emacs_query)
+            .replace("HEAD-PLACEHOLD", get_tooltip_script(script_file))
+        )
     web_window.webview.setHtml(index_html, QUrl("file://"))
     web_window.loading_js_code = ""
 
