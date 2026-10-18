@@ -301,8 +301,7 @@ running, and the session is removed from `popweb-epc-live-connections'."
     (when (and proc (equal 'run (process-status proc)))
       (kill-process proc))
     (when buf  (kill-buffer buf))
-    (setq popweb-epc-live-connections (delete mngr popweb-epc-live-connections))
-    ))
+    (setq popweb-epc-live-connections (delete mngr popweb-epc-live-connections))))
 
 (defun popweb-epc-args (args)
   "Return ARGS itself when it is an atom, or its second element when it is a list.
@@ -579,8 +578,7 @@ a client that goes away is shut down and forgotten."
           (popweb-epc-log "POPWEB-EPC-SERVER- DISCONNECT %S" process)
           (popweb-epc-stop-epc (cdr pair))
           (setq popweb-epc-server-client-processes
-                (assq-delete-all process popweb-epc-server-client-processes))
-          ))
+                (assq-delete-all process popweb-epc-server-client-processes))))
       nil))))
 
 (defun popweb-epc-server-start (connect-function &optional port)
