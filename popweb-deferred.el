@@ -149,7 +149,6 @@ value     is that stored value or error."
 
 (defun popweb-deferred-resignal (err)
   "Signal ERR again as the Emacs condition it stands for.
-
 If ERR is a cons whose car has `error-conditions', it is signaled unchanged.
 A string is signaled as a plain `error', and anything else is printed with
 `%S' before being signaled."
@@ -279,7 +278,6 @@ Return the new deferred object that holds CALLBACK."
 
 (defun popweb-deferred-error (d callback)
   "Create a deferred object with errorback CALLBACK after D.
-
 When D fails, CALLBACK is called with its error value; when D succeeds, the
 errorback of the new object is never reached."
   (declare (indent 1))

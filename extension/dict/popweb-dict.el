@@ -133,7 +133,6 @@ URL is a format string with one %s for the word.  JS-CODE is the snippet
 that trims the loaded page to the part worth showing; it is wrapped in a
 try/catch because every site changes its DOM eventually.  JS-FILE is an
 optional file with more JavaScript, read by the Python side at popup time.
-
 The macro defines `popweb-dict-NAME-pointer', `popweb-dict-NAME-input',
 `popweb-dict-NAME-translate' and the two window state functions named after
 NAME.  The popup covers 30% of the frame width and 50% of its height."

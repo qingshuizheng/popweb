@@ -13,7 +13,6 @@
 
 (defun z/check-forms (&rest files)
   "Signal a failure unless every top-level form in FILES reads to the end.
-
 Print the file and line of the first unbalanced form and kill Emacs with
 status 1, which is what makes it usable as a build gate."
   (dolist (file files)

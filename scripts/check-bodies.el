@@ -31,7 +31,6 @@
 
 (defun z/check-bodies (&rest files)
   "Report every definition in FILES that has no body, and exit non-zero.
-
 A definition whose docstring is its last element is reported with its name
 and line; a `define-minor-mode' with keywords but no body counts as having
 a body, because the keywords are what it does."

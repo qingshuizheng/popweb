@@ -63,7 +63,6 @@
     (let ((environment (popweb--build-process-environment)))
       (should (equal (popweb-process-test--env-value "QT_DEBUG_PLUGINS" environment) "1")))))
 
-
 (ert-deftest popweb-process-test-wsl-detection ()
   "Only a Linux Emacs running a Windows Python is the WSL case."
   (let ((system-type 'gnu/linux)
